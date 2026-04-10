@@ -6,7 +6,7 @@ import Navbar from './components/Navbar.vue';
 </script>
 
 <template>
-  <div class="min-h-screen bg-blue-950">
+  <div class="min-h-screen bg-slate-200">
     <Navbar />
     
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

@@ -189,19 +189,132 @@
       </div>
 
     </div>
+
+    <section class="mt-10 bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8">
+      <template v-if="schedule.length === 0">
+        <h2 class="text-xl font-semibold text-gray-800 mb-2">Harmonogram oszczędzania i wypłat</h2>
+        <p class="text-sm text-gray-600 mb-6">
+          Rok w kolumnie „Rok” to kolejny rok symulacji (najpierw okres oszczędzania, potem wypłat). Wartości liczone są z aktualnych parametrów formularza.
+        </p>
+        <p class="text-sm text-gray-600">
+          Uzupełnij poprawnie parametry powyżej, aby zobaczyć harmonogram.
+        </p>
+      </template>
+
+      <div
+        v-else
+        class="rounded-xl border border-gray-200 bg-white p-4 md:p-6"
+      >
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-semibold text-gray-800">Harmonogram oszczędzania i wypłat</h2>
+            <p class="text-sm text-gray-600 mt-2">
+              Rok w kolumnie „Rok” to kolejny rok symulacji (najpierw okres oszczędzania, potem wypłat). Wartości liczone są z aktualnych parametrów formularza.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="schedule-pdf-skip inline-flex shrink-0 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="pdfExporting"
+            @click="exportSchedulePdf"
+          >
+            {{ pdfExporting ? 'Generowanie…' : 'Pobierz PDF' }}
+          </button>
+        </div>
+        <p class="text-xs text-gray-500 mb-4">
+          Wygenerowano: {{ reportStamp }}
+        </p>
+
+        <div class="overflow-x-auto rounded-lg border border-gray-200">
+          <table class="min-w-full text-sm text-left border-collapse">
+            <thead>
+              <tr class="text-gray-800 border-b-2 border-gray-300 bg-gray-100">
+                <th scope="col" class="py-3 px-3 font-semibold whitespace-nowrap text-center">
+                  Rok
+                </th>
+                <th scope="col" class="py-3 px-3 font-semibold whitespace-nowrap text-right">
+                  Saldo początkowe <span class="block text-xs font-normal text-gray-500">(1 stycznia)</span>
+                </th>
+                <th scope="col" class="py-3 px-3 font-semibold whitespace-nowrap text-right">
+                  Wpłata / Wypłata
+                </th>
+                <th
+                  scope="col"
+                  class="py-3 px-3 font-semibold text-right bg-slate-100/95 border-x border-slate-200/90 text-gray-800"
+                  title="Kwota, od której w tym roku naliczane są odsetki (po uwzględnieniu kolejności wpłaty lub wypłaty)."
+                >
+                  <span class="whitespace-nowrap">Kapitał pracujący</span>
+                  <span class="block text-xs font-normal text-gray-500 leading-snug mt-0.5 max-w-[12rem] ml-auto text-right">
+                    Podstawa odsetek w roku (po wpłacie z góry lub przed wypłatą z góry).
+                  </span>
+                </th>
+                <th scope="col" class="py-3 px-3 font-semibold whitespace-nowrap text-right text-sky-800">
+                  Zarobione odsetki
+                </th>
+                <th scope="col" class="py-3 px-3 font-semibold whitespace-nowrap text-right">
+                  Saldo końcowe
+                </th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-800">
+              <tr
+                v-for="(row, index) in schedule"
+                :key="row.yearNumber"
+                :class="[
+                  'border-b border-gray-200/80 even:bg-gray-50',
+                  row.phase === 'retirement' && index === nIn
+                    ? 'border-t-4 border-t-indigo-200 bg-indigo-50/60'
+                    : '',
+                ]"
+              >
+                <td class="py-2.5 px-3 text-center tabular-nums font-medium text-gray-900">
+                  {{ row.yearNumber }}
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums text-gray-800">
+                  {{ formatPln(row.balanceStart) }}
+                </td>
+                <td
+                  class="py-2.5 px-3 text-right tabular-nums font-semibold"
+                  :class="row.operation === 'Wpłata' ? 'text-emerald-700' : 'text-red-600'"
+                >
+                  {{ formatSignedFlow(row) }}
+                </td>
+                <td
+                  class="py-2.5 px-3 text-right tabular-nums text-gray-800 bg-slate-100/90 border-x border-slate-200/80"
+                  :class="row.phase === 'retirement' && index === nIn ? '!bg-indigo-100/80' : ''"
+                >
+                  {{ formatPln(row.workingCapital) }}
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums font-medium text-sky-700">
+                  {{ formatPln(row.interest) }}
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums font-bold text-gray-900">
+                  {{ formatEndingBalance(row, index) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 mt-4 leading-relaxed max-w-3xl">
+          W każdym roku: odsetki = kapitał pracujący × stopa. Saldo końcowe to kapitał pracujący plus odsetki,
+          a przy wpłacie na koniec roku (oszczędzanie „z dołu”) lub wypłacie na koniec roku (emerytura „z dołu”)
+          dodatkowo doliczana jest wpłata albo odjęta jest wypłata po naliczeniu odsetek.
+        </p>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
 import { useCalculatorStore } from '@/stores/calculatorStore'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue' // usunąłem ref, bo nie będzie już potrzebny dla wyników
+import { computed, ref } from 'vue'
 
 // 1. Podpięcie Pinii
 const store = useCalculatorStore()
 const { 
   pmtOut, nOut, nIn, rate, saveMode, payoutMode, 
-  targetPV, yearlyContribution 
+  targetPV, yearlyContribution, schedule,
 } = storeToRefs(store)
 
 // 2. Formatowanie wyników
@@ -213,6 +326,45 @@ const formatter = new Intl.NumberFormat('pl-PL', {
 
 const formattedPV = computed(() => formatter.format(targetPV.value))
 const formattedPMT = computed(() => formatter.format(yearlyContribution.value))
+
+const formatPln = (value) => formatter.format(value)
+
+const formatSignedFlow = (row) =>
+  row.operation === 'Wpłata'
+    ? `+${formatPln(row.flowAmount)}`
+    : `-${formatPln(row.flowAmount)}`
+
+const formatEndingBalance = (row, index) => {
+  const isLast = index === schedule.value.length - 1
+  let v = row.balanceEnd
+  if (isLast && Math.abs(v) < 0.005) v = 0
+  if (Object.is(v, -0)) v = 0
+  return formatPln(v)
+}
+
+const pdfExporting = ref(false)
+const reportStamp = ref(new Date().toLocaleString('pl-PL'))
+
+const exportSchedulePdf = async () => {
+  if (!schedule.value.length || pdfExporting.value) return
+  pdfExporting.value = true
+  try {
+    reportStamp.value = new Date().toLocaleString('pl-PL')
+    const { downloadScheduleTablePdf } = await import('@/utils/schedulePdf')
+    const day = new Date().toISOString().slice(0, 10)
+    downloadScheduleTablePdf({
+      rows: schedule.value,
+      fileName: `harmonogram-emerytalny-${day}.pdf`,
+      generatedAt: reportStamp.value,
+      savingYears: nIn.value,
+      formatPln,
+      formatSignedFlow,
+      formatEndingBalance,
+    })
+  } finally {
+    pdfExporting.value = false
+  }
+}
 
 // #region WALIDACJA (LOGIKA)
 const isRateInvalid = computed(() =>  rate.value < 0 || rate.value > 100);

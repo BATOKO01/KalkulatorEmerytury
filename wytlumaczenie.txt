@@ -1,0 +1,143 @@
+================================================================================
+WYTLUMACZENIE OBLICZEN – KALKULATOR EMERYTALNY
+================================================================================
+Plik opisuje, skad biora sie liczby w aplikacji, gdzie NIE ma zaokraglen
+w obliczeniach, a gdzie kwoty sa tylko PREZENTOWANE z dwoma miejscami po przecinku.
+
+--------------------------------------------------------------------------------
+1. GDZIE JEST LOGIKA
+--------------------------------------------------------------------------------
+- Glowne obliczenia (Pinia): plik src/stores/calculatorStore.ts
+- Wyswietlanie kwot na stronie (formatowanie tekstu): src/views/HomeView.vue
+  (Intl.NumberFormat 'pl-PL', 2 miejsca po przecinku)
+- Eksport PDF tabeli harmonogramu: src/utils/schedulePdf.ts
+  (uzywa tych samych sformatowanych napisow co widok, przekazanych z HomeView)
+
+--------------------------------------------------------------------------------
+2. ZAOKRAGLENIA – PODSUMOWANIE
+--------------------------------------------------------------------------------
+W store (calculatorStore.ts) wszystkie wartosci liczone sa jako liczby
+zmiennoprzecinkowe JavaScript (IEEE 754). NIE ma tam zaokraglania do groszy przy
+kazdym kroku — wyniki posrednie maja pelna precyzje binarna.
+
+Zaokraglenie do DWOCH MIEJSC PO PRZECINKU dotyczy WYLACZNIE:
+- sposobu WYSWIETLENIA / ZAPISU TEKSTU (formatter w HomeView.vue),
+- czyli tego, co widzisz w UI i w komorkach PDF (te same funkcje formatPln itd.).
+
+Wyjatek od „samej precyzji” w danych:
+- Ostatni wiersz harmonogramu: jesli |saldo koncowe| < 0.005, w store ustawiane
+  jest dokladnie 0 (unikniecie smieci typu 1e-12 z floatow).
+- Przy wyswietlaniu salda koncowego ostatniego wiersza: jesli |wartosc| < 0.005,
+  do formatowania uzywane jest 0 (oraz -0 jest zamieniane na 0), zeby nie pokazywac
+  „-0,00”.
+
+Zadnego innego centralnego „Math.round do 2 miejsc” w obliczeniach PV/PMT/harmonogramu
+nie ma.
+
+--------------------------------------------------------------------------------
+3. STOPA PROCENTOWA r
+--------------------------------------------------------------------------------
+W formularzu: rate w procentach (np. 10 oznacza 10%).
+W kodzie: r = rate / 100  (np. 0,1 przy 10%).
+Brak zaokraglenia r — to zwykly iloraz.
+
+Przy rate = 0 (walidacja dopuszcza 0):
+- Kapital docelowy (PV) = roczna wypłata * liczba lat emerytury (prosta suma).
+- Roczna skladka = PV / liczba lat oszczedzania.
+- W harmonogramie odsetki = 0 (bo workingCapital * 0).
+
+--------------------------------------------------------------------------------
+4. KAPITAL DOCELOWY (targetPV) — „ile zebrac przed emerytura”
+--------------------------------------------------------------------------------
+Oznaczenia: P = pmtOut (roczna wypłata), n = nOut (lata emerytury), r = stopa jako ulamek.
+
+Jesli r > 0 i payoutMode = 'end' (wypłaty z dolu roku):
+  PV = P * (1 - (1+r)^(-n)) / r
+  To wartosc biezaca renty platnej koncem okresu.
+
+Jesli r > 0 i payoutMode = 'start' (wypłaty z gory roku):
+  PV = powyzsze * (1 + r)
+  (klasyczna korekta annuity due).
+
+Jesli formularz niewazny — zwrot 0.
+
+--------------------------------------------------------------------------------
+5. ROCZNA SKLADKA (yearlyContribution) — PMT
+--------------------------------------------------------------------------------
+FV = targetPV (kapital, ktory trzeba zebrac do pierwszego dnia emerytury).
+
+Jesli r = 0:
+  PMT = FV / nIn
+
+Jesli r > 0 i saveMode = 'end' (wpłaty z dolu):
+  PMT = FV * r / ((1+r)^nIn - 1)
+
+Jesli saveMode = 'start' (wpłaty z gory):
+  PMT = powyzsze / (1 + r)
+
+Jesli formularz niewazny lub FV = 0 — zwrot 0.
+
+--------------------------------------------------------------------------------
+6. HARMONOGRAM (schedule) — ROK PO ROKU
+--------------------------------------------------------------------------------
+Uzywane: rr = r, pmt = yearlyContribution, withdrawal = pmtOut.
+Startowe saldo = 0. Kazdy rok: balanceStart = saldo na poczatku tego roku (1 stycznia
+w interpretacji tabeli).
+
+Kapital pracujacy (workingCapital) — baza odsetek w tym roku:
+- Oszczedzanie, saveMode 'end':  workingCapital = balanceStart
+  (wpłata na koniec roku; odsetki tylko od salda poczatkowego).
+- Oszczedzanie, saveMode 'start': workingCapital = balanceStart + pmt
+  (wpłata na poczatku; odsetki od sumy).
+
+- Emerytura, payoutMode 'end':  workingCapital = balanceStart
+  (wypłata po odsetkach).
+- Emerytura, payoutMode 'start': workingCapital = balanceStart - withdrawal
+  (wypłata na poczatku; odsetki od salda po wypłacie).
+
+Odsetki w roku:
+  interest = workingCapital * rr
+
+Saldo koncowe roku (balanceEnd):
+- Oszczedzanie 'end':  workingCapital + interest + pmt
+- Oszczedzanie 'start': workingCapital + interest
+- Emerytura 'start':    workingCapital + interest
+- Emerytura 'end':      workingCapital + interest - withdrawal
+
+Po zbudowaniu calej tablicy: ostatni wiersz — jesli |balanceEnd| < 0.005, balanceEnd
+ustawiane jest na 0 (patrz pkt 2).
+
+--------------------------------------------------------------------------------
+7. CO WIDZISZ NA EKRANIE (formatowanie)
+--------------------------------------------------------------------------------
+HomeView.vue: Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2,
+maximumFractionDigits: 2 }).
+
+To znaczy: liczba jest ZAOKRAGLANA DO WYSWIETLENIA do 2 miejsc po przecinku
+(standardowo polska spacja tysieczna i przecinek dziesietny — zgodnie z locale).
+
+Dotyczy: kapitalu docelowego, rocznej skladki, wszystkich kolumn harmonogramu
+(saldo poczatkowe, przepływ, kapital pracujacy, odsetki, saldo koncowe), z wyjatkiem
+logiki „ostatni wiersz ≈ 0” opisanej wyzej przed formatowaniem.
+
+Przepływ: dla wpłaty prefiks „+”, dla wypłaty „-” przed kwota (tekstowo).
+
+--------------------------------------------------------------------------------
+8. PDF
+--------------------------------------------------------------------------------
+Harmonogram w PDF budowany jest z tych samych liczb co schedule w store, ale komorki
+wypelnione sa JUZ SFORMATOWANYM TEKSTEM (formatPln / formatSignedFlow /
+formatEndingBalance z HomeView). Czyli zaokraglenie wizualne jak w tabeli na stronie;
+sam jsPDF nie przelicza PV ani odsetek.
+
+--------------------------------------------------------------------------------
+9. SPÓJNOSC MODELU
+--------------------------------------------------------------------------------
+yearlyContribution jest dobrane tak, aby — przy tych samych zalozeniach co w wzorach
+targetPV i PMT — po fazie oszczedzania saldo powinno byc zgodne z kapital docelowy
+(z dokladnoscia do bledow float). Faza emerytury jest symulowana ta sama stopa r
+i ta sama kolejnoscia wypłat co przy wyliczeniu PV.
+
+================================================================================
+Koniec pliku.
+================================================================================

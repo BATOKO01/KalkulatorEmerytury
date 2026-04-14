@@ -65,7 +65,7 @@ const route = useRoute()
 
 // Definiujemy nasze zakładki (zamiast href jest 'to', brak twardego 'current')
 const navigation = [
-  { name: 'Home', to: '/' },
+  { name: 'Kalkulator', to: '/' },
   { name: 'Autorzy', to: '/authors' },
 ]
 </script>
